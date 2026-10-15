@@ -1,0 +1,12 @@
+bin/
+*.db
+*.db-wal
+*.db-shm
+examples/*/build/
+examples/*/*.json
+web/node_modules/
+web/dist/
+examples/worktree-demo/
+__pycache__/
+*.pyc
+web/tsconfig.tsbuildinfo
