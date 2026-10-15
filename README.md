@@ -16,7 +16,7 @@ Windows 原生、WSL。
 - `cmd/benchd` — 平台服务器：结果存储、对比 API（M2 起含 Web 看板）
 - `cmd/bench-runner` — 基准执行器：跑 bench.yaml、环境快照、计数器采集、上报/本地对比
 - `internal/compare` — 统计引擎：中位数、加速比、bootstrap CI、Mann-Whitney U 检验
-- `examples/matmul-demo` — 演示：naive（缓存不友好 i-j-k）vs tiled（分块）矩阵乘法
+- `examples/matmul-demo` — 演示：naive（缓存不友好 i-j-k）矩阵乘法基线，可作为优化对比的 before 侧
 
 ## 快速开始
 
@@ -33,9 +33,8 @@ go build -o bin/bench-runner ./cmd/bench-runner
 cd examples/matmul-demo
 cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
 
-# 4. 跑优化前/后基准并上报
-bench-runner run -c bench-before.yaml --server http://localhost:8080 --label before -o before.json
-bench-runner run -c bench-after.yaml  --server http://localhost:8080 --label after  -o after.json
+# 4. 跑基准并上报（优化后修改代码再跑一次，即得 before/after 两次运行）
+bench-runner run -c bench.yaml --server http://localhost:8080 --label before -o before.json
 
 # 5. 对比（在线或本地）
 bench-runner compare --server http://localhost:8080 --before 1 --after 2
@@ -61,7 +60,7 @@ curl "http://localhost:8080/api/v1/compare?before_run=1&after_run=2"  # 对比 J
 sqlite3 cpuperfom.db "SELECT * FROM runs ORDER BY id DESC LIMIT 5;"
 ```
 
-示例输出（matmul-demo，naive → tiled）：
+示例输出（历史 demo 数据：naive → tiled 缓存分块优化，当前 examples 仅保留 naive 基线）：
 
 ```
 BENCHMARK  BEFORE     AFTER     Δ%       SPEEDUP  95% CI            p       结论

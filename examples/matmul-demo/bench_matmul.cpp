@@ -14,16 +14,4 @@ static void BM_MatmulNaive(benchmark::State& state) {
 }
 BENCHMARK(BM_MatmulNaive)->Arg(512);
 
-static void BM_MatmulTiled(benchmark::State& state) {
-    const int N = state.range(0);
-    auto A = make_matrix(N, 0.1);
-    auto B = make_matrix(N, 0.7);
-    std::vector<double> C(N * N);
-    for (auto _ : state) {
-        matmul_tiled(A, B, C, N);
-        benchmark::DoNotOptimize(C.data());
-    }
-}
-BENCHMARK(BM_MatmulTiled)->Arg(512);
-
 BENCHMARK_MAIN();

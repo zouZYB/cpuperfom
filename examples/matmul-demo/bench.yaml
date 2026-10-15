@@ -1,4 +1,4 @@
-# 优化前：naive 矩阵乘法
+# naive 矩阵乘法（缓存不友好基线）
 project: matmul-demo
 benchmarks:
   - name: matmul
@@ -6,6 +6,6 @@ benchmarks:
     command: build/bench_matmul.exe --benchmark_filter=BM_MatmulNaive --benchmark_repetitions=10 --benchmark_min_time=0.5s
   - name: app
     kind: prog
-    command: build/app.exe naive
+    command: build/app.exe
     repeat: 10
 counters: [cycles, instructions, cache-misses, branch-misses]
