@@ -1,0 +1,60 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "vs2022-clangcl",
+      "displayName": "VS2022 + ClangCL (x64)",
+      "description": "在 VS2022 里生成 .sln：ClangCL 工具集",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "toolset": "ClangCL",
+      "binaryDir": "${sourceDir}/build-vs2022",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
+      }
+    },
+    {
+      "name": "mingw-gcc",
+      "displayName": "MinGW GCC / Makefiles (x64)",
+      "description": "GCC 工作流，产物在 build/",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "vs2022-clangcl-release",
+      "displayName": "VS2022 ClangCL - Release",
+      "configurePreset": "vs2022-clangcl",
+      "configuration": "Release"
+    },
+    {
+      "name": "mingw-gcc-release",
+      "displayName": "MinGW GCC - Release",
+      "configurePreset": "mingw-gcc"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "vs2022-clangcl-release",
+      "displayName": "VS2022 ClangCL - Release",
+      "configurePreset": "vs2022-clangcl",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "mingw-gcc-release",
+      "displayName": "MinGW GCC - Release",
+      "configurePreset": "mingw-gcc",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

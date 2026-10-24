@@ -15,9 +15,8 @@ import (
 
 	"github.com/cpuperfom/cpuperfom/internal/compare"
 	"github.com/cpuperfom/cpuperfom/runner"
-	"github.com/cpuperfom/cpuperfom/runner/abtest"
 	"github.com/cpuperfom/cpuperfom/runner/envctl"
-	"github.com/cpuperfom/cpuperfom/runner/gitver"
+	"github.com/cpuperfom/cpuperfom/runner/refcmp"
 )
 
 func main() {
@@ -175,54 +174,25 @@ func compareRefCmd() *cobra.Command {
 		Use:   "compare-ref",
 		Short: "worktree 检出 before/after 两版本，ABAB 交替运行并对比",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			cfg, err := runner.LoadConfig(configPath)
-			if err != nil {
-				return err
-			}
-
-			fmt.Printf("检出 %s（before）与 %s（after）…\n", beforeRef, afterRef)
-			pair, err := gitver.Setup(repo, beforeRef, afterRef)
-			if err != nil {
-				return err
-			}
-			defer pair.Cleanup()
-
-			if buildCmd != "" {
-				fmt.Println("构建两个版本…")
-				if err := pair.Build(buildCmd); err != nil {
-					return err
-				}
-			}
-
-			fmt.Printf("ABAB 交替运行 %d 轮…\n", rounds)
-			before, after, err := abtest.Run(cfg, pair.BeforeDir, pair.AfterDir, rounds, runner.RunOptions{
-				Repeat: repeat, Warmup: warmup, TimeoutSec: timeout,
+			res, err := refcmp.Run(refcmp.Options{
+				Repo: repo, BeforeRef: beforeRef, AfterRef: afterRef,
+				BuildCmd: buildCmd, ConfigPath: configPath, Rounds: rounds,
+				Run:  runner.RunOptions{Repeat: repeat, Warmup: warmup, TimeoutSec: timeout},
+				Logf: func(format string, args ...any) { fmt.Printf(format, args...) },
 			})
 			if err != nil {
 				return err
 			}
 
-			// 本地统计对比并打印
-			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-			resp := &runner.CompareResponse{}
-			afterByName := map[string]runner.BenchOutput{}
-			for _, a := range after {
-				afterByName[a.Name] = a
-			}
-			for _, b := range before {
-				if a, ok := afterByName[b.Name]; ok {
-					resp.Results = append(resp.Results, compare.Samples(b.Name, b.Kind, b.Unit, b.Values, a.Values, rng))
-				}
-			}
 			fmt.Println()
-			runner.PrintCompareTable(os.Stdout, resp)
+			runner.PrintCompareTable(os.Stdout, res.Compare)
 
 			// 本地保存
 			if outPrefix != "" {
-				if data, err := json.MarshalIndent(before, "", "  "); err == nil {
+				if data, err := json.MarshalIndent(res.Before, "", "  "); err == nil {
 					os.WriteFile(outPrefix+"-before.json", data, 0o644)
 				}
-				if data, err := json.MarshalIndent(after, "", "  "); err == nil {
+				if data, err := json.MarshalIndent(res.After, "", "  "); err == nil {
 					os.WriteFile(outPrefix+"-after.json", data, 0o644)
 				}
 				fmt.Printf("结果已保存到 %s-{before,after}.json\n", outPrefix)
@@ -231,32 +201,13 @@ func compareRefCmd() *cobra.Command {
 			if noUpload || server == "" {
 				return nil
 			}
-			// 上报两次运行
+			// 上报两次运行（before/after 各一条 run）
 			up := runner.NewUploader(server, token)
-			env := envctl.Snapshot("")
-			for _, side := range []struct {
-				label   string
-				commit  string
-				outputs []runner.BenchOutput
-			}{
-				{"before", gitver.ResolveRef(repo, beforeRef), before},
-				{"after", gitver.ResolveRef(repo, afterRef), after},
-			} {
-				runID, err := up.CreateRun(cfg.Project, side.commit, "", side.label, env)
-				if err != nil {
-					return err
-				}
-				if err := up.UploadResults(runID, side.outputs); err != nil {
-					return err
-				}
-				if err := up.UploadProfiles(runID, side.outputs); err != nil {
-					return err
-				}
-				if err := up.Finish(runID); err != nil {
-					return err
-				}
-				fmt.Printf("已上报 %s run_id=%d\n", side.label, runID)
+			beforeID, afterID, err := refcmp.Upload(up, res.Project, "", res, envctl.Snapshot(""))
+			if err != nil {
+				return err
 			}
+			fmt.Printf("已上报 before run_id=%d，after run_id=%d\n", beforeID, afterID)
 			return nil
 		},
 	}

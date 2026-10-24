@@ -116,6 +116,82 @@ func TestRunLifecycleAndSamples(t *testing.T) {
 	}
 }
 
+func TestWatchRepoAndCIJob(t *testing.T) {
+	q := openTest(t)
+
+	id, err := q.UpsertWatchRepo("demo", "/tmp/demo", "main")
+	if err != nil || id == 0 {
+		t.Fatalf("upsert: id=%d err=%v", id, err)
+	}
+	// 同 (path, branch) upsert 幂等且更新名称、保留游标
+	if err := q.AdvanceCursor(id, "abc123"); err != nil {
+		t.Fatal(err)
+	}
+	id2, err := q.UpsertWatchRepo("demo-renamed", "/tmp/demo", "main")
+	if err != nil || id2 != id {
+		t.Fatalf("upsert idempotent: id2=%d err=%v", id2, err)
+	}
+	w, err := q.GetWatchRepo(id)
+	if err != nil || w.Name != "demo-renamed" || w.LastCommit != "abc123" {
+		t.Fatalf("get: %+v err=%v", w, err)
+	}
+
+	if err := q.RecordPoll(id, "def456", ""); err != nil {
+		t.Fatal(err)
+	}
+	w, _ = q.GetWatchRepo(id)
+	if w.LastSeen != "def456" || w.LastPollAt == "" {
+		t.Fatalf("record poll: %+v", w)
+	}
+
+	repos, err := q.ListWatchRepos()
+	if err != nil || len(repos) != 1 {
+		t.Fatalf("list: %v err=%v", repos, err)
+	}
+
+	// CI 任务生命周期（before/after run_id 需指向真实 run，有外键约束）
+	pid, _ := q.CreateProject("p", "")
+	run1, _ := q.CreateRun(&model.Run{ProjectID: pid, Label: model.LabelBefore, CommitSHA: "abc123"})
+	run2, _ := q.CreateRun(&model.Run{ProjectID: pid, Label: model.LabelAfter, CommitSHA: "def456"})
+	jobID, err := q.CreateCIJob(&model.CIJob{WatchRepoID: id, BeforeSHA: "abc123", AfterSHA: "def456"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.FinishCIJob(jobID, "success", "matmul: 变慢 8.2%", "", run1, run2); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := q.ListCIJobs("", 0)
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("list jobs: %v err=%v", jobs, err)
+	}
+	j := jobs[0]
+	if j.Status != "success" || j.Verdict != "matmul: 变慢 8.2%" || j.BeforeRunID != run1 || j.AfterRunID != run2 || j.FinishedAt == "" {
+		t.Fatalf("job: %+v", j)
+	}
+	if j.RepoName != "demo-renamed" {
+		t.Fatalf("repo name join: %q", j.RepoName)
+	}
+	// 按仓库名过滤
+	jobs, _ = q.ListCIJobs("no-such-repo", 0)
+	if len(jobs) != 0 {
+		t.Fatal("filter by repo name failed")
+	}
+
+	// running 任务被启动清扫标记为失败
+	job2, _ := q.CreateCIJob(&model.CIJob{WatchRepoID: id, BeforeSHA: "a", AfterSHA: "b"})
+	if err := q.FailStaleCIJobs(); err != nil {
+		t.Fatal(err)
+	}
+	jobs, _ = q.ListCIJobs("", 10)
+	if jobs[0].ID != job2 || jobs[0].Status != "failed" || jobs[0].Error == "" {
+		t.Fatalf("stale sweep: %+v", jobs[0])
+	}
+	// 已完成的任务不受影响
+	if jobs[1].ID != jobID || jobs[1].Status != "success" {
+		t.Fatalf("finished job should not be swept: %+v", jobs[1])
+	}
+}
+
 func TestCountersReplace(t *testing.T) {
 	q := openTest(t)
 	pid, _ := q.CreateProject("p", "")

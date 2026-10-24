@@ -1,0 +1,54 @@
+# SIMD 实验场的 bench-runner 配置。
+#
+# 注意：bench-runner 的 compare 比较的是“两次 run”（例如优化前后的两个提交），
+# 而“同一提交内 scalar vs avx2 vs avx512 的加速比”属于变体对比，
+# 用 scripts/report.ps1 解析 bench_simd 的 JSON 更直接。
+# 这里每个条目只过滤一个 (内核, 实现, 规模)，保证 parseGBJSON 拿到的样本不混。
+project: simd-lab
+benchmarks:
+  - name: add_1k_scalar
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Add/scalar/n:1024 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: add_1k_avx2
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Add/avx2/n:1024 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: add_1k_avx512
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Add/avx512/n:1024 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: add_32m_avx2
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Add/avx2/n:33554432 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: dot_1k_scalar
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Dot/scalar/n:1024 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: dot_1k_avx2
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Dot/avx2/n:1024 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: normalize_aos_64k_auto
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_NormalizeAos/auto_native/n:65536 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: normalize_aos_64k_avx2
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_NormalizeAos/avx2/n:65536 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: normalize_soa_64k_avx2
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_NormalizeSoa/avx2/n:65536 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: gather_64k_scalar
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Gather/scalar/n:65536 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: gather_64k_avx2
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Gather/avx2/n:65536 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: int8_64k_scalar
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Int8Dot/scalar/n:65536 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: int8_64k_avx2
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_Int8Dot/avx2/n:65536 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: tiny_3_avx2
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_TinyAdd/avx2/n:3 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: addf64_64k_avx512
+    kind: func
+    command: build/bench_simd.exe --benchmark_filter=BM_AddF64/avx512/n:65536 --benchmark_repetitions=10 --benchmark_min_time=0.05s
+counters: [cycles, instructions, cache-misses, branch-misses]

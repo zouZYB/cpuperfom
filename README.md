@@ -129,11 +129,41 @@ go build -o bin/benchd ./cmd/benchd
 cd web && npm run dev
 ```
 
+## 持续性能监控（benchd -ci）
+
+benchd 传入 `-ci ci.yaml` 后内置轮询监控：发现新提交自动用 git worktree 检出
+「上一个已处理提交 vs 最新提交」两个版本，分别构建并 ABAB 交替运行，结果作为
+before/after 两条 run 入库（`ci_provider=benchd-watch`），结论写入任务历史。
+
+```yaml
+# ci.yaml
+defaults: { interval: 60s, rounds: 3, warmup: 1, timeout: 120, branch: main }
+repos:
+  - name: worktree-demo
+    path: C:/path/to/repo                        # 本地 git 仓库（必填）
+    branch: master
+    config: bench.yaml                           # 在 after worktree 内读取，随提交演进
+    build: "g++ -O2 -o app.exe app.cpp matmul.cpp"  # 在每个 worktree 内执行；可空
+    # fetch: true / remote: origin               # 监控远端时先 git fetch
+```
+
+```bash
+benchd -addr :8080 -db cpuperfom.db -ci ci.yaml
+```
+
+行为要点：
+- 首轮轮询只建游标，不把历史 HEAD 当新提交跑；一次落多个提交只对比最新
+- 全局单 worker 串行执行所有仓库的任务（基准计时不能并行互扰）
+- 构建/运行失败的任务标记 failed（含报错尾部）且游标照常推进，坏提交不会卡死监控
+- 游标存 SQLite，重启不丢；中断的 running 任务重启时标记失败并自动重试该提交
+- 查看状态：`GET /api/v1/ci/repos`（游标/错误）、`GET /api/v1/ci/jobs?repo=&limit=`（任务历史含 before/after run_id 与 verdict）
+
 ## 路线图
 
 - [x] M1 核心闭环：runner → API → 存储 → CLI 对比表
 - [x] M2a Web 看板：运行列表、对比表格、箱线图、计数器面板
-- [ ] M2b ABAB 交替、git worktree 双版本、差分火焰图
+- [x] M2b ABAB 交替、git worktree 双版本、差分火焰图
 - [ ] M3 趋势与回归：baseline、阈值告警
 - [ ] M4 权限与多项目
-- [ ] M5 CI 集成（GitHub Actions / GitLab CI / Jenkins）与通知
+- [x] M5a benchd 内置 git 提交监控（轮询 → 自动 before/after 对比入库）
+- [ ] M5b 外部 CI 集成（GitHub Actions / GitLab CI / Jenkins）与通知

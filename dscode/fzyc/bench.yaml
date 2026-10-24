@@ -1,0 +1,44 @@
+﻿# 分支预测实验场的 bench-runner 配置。
+#
+# 每个条目只过滤一个 (组, 内核, 变体)，保证 parseGBJSON 拿到的样本不混；
+# 同一提交内的"可预测 vs 不可预测"对比请用 scripts/report.ps1。
+# Windows 上没有 perf，counters 仅在 Linux 下叠加 bench-runner 时有效。
+project: fzyc-lab
+benchmarks:
+  - name: sum_if_branch_sorted
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=data/sum_if_branch/order=sorted_asc$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: sum_if_branch_random
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=data/sum_if_branch/order=random$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: sum_if_cmov_random
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=data/sum_if_cmov/order=random$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: pattern_all_true
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=pattern/pattern_sum/pattern=all_true$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: pattern_period8
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=pattern/pattern_sum/pattern=period8$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: pattern_random
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=pattern/pattern_sum/pattern=random$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: switch8_seq
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=indirect/switch_ways/ways=8,mode=seq$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: switch8_random
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=indirect/switch_ways/ways=8,mode=random$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: callptr8_random
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=indirect/callptr/ways=8,mode=random$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: virtual4_random
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=indirect/virtual_call/ways=4,mode=random$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: map_ifchain_wide
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=branchless/map_ifchain/order=wide256$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+  - name: map_lookup_wide
+    kind: func
+    command: build/bench_branch.exe --benchmark_filter=branchless/map_lookup/order=wide256$ --benchmark_repetitions=10 --benchmark_min_time=0.05s
+counters: [cycles, instructions, branch-misses, branch-instructions]

@@ -1,0 +1,15 @@
+# ci.yaml：benchd 内置持续性能监控配置（benchd -ci ci.yaml 启用）
+# 语义：轮询下列 git 仓库，发现新提交后自动对比「上一个已处理提交 vs 最新提交」。
+defaults:
+  interval: 5s     # 轮询间隔（生产建议 60s+，演示用 5s）
+  rounds: 2        # ABAB 交替轮数
+  warmup: 1
+  timeout: 60      # 单次基准命令超时（秒）
+  branch: master
+
+repos:
+  - name: worktree-demo
+    path: C:/Users/Administrator/Desktop/project/cpuperfom/examples/worktree-demo
+    branch: master
+    config: bench.yaml                              # 在 after worktree 内读取，随提交演进
+    build: "g++ -O2 -o app.exe app.cpp matmul.cpp"  # 在两个 worktree 内分别执行

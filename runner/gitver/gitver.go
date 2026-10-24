@@ -2,6 +2,7 @@
 package gitver
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -52,11 +53,21 @@ func Setup(repo, beforeRef, afterRef string) (*Pair, error) {
 // Build 在两个 worktree 中分别执行构建命令（如 "cmake --build build -j"）。
 // buildCmd 为空则跳过（例如已提交构建产物或用脚本自行构建）。
 func (p *Pair) Build(buildCmd string) error {
+	return p.BuildContext(context.Background(), buildCmd)
+}
+
+// BuildContext 同 Build，但可通过 ctx 设置超时或取消（防止构建挂死）。
+func (p *Pair) BuildContext(ctx context.Context, buildCmd string) error {
 	if buildCmd == "" {
 		return nil
 	}
 	for _, dir := range []string{p.BeforeDir, p.AfterDir} {
-		cmd := shellCommand(buildCmd)
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.CommandContext(ctx, "cmd", "/C", buildCmd)
+		} else {
+			cmd = exec.CommandContext(ctx, "sh", "-c", buildCmd)
+		}
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -81,14 +92,6 @@ func ResolveRef(repo, ref string) string {
 		return ref
 	}
 	return strings.TrimSpace(string(out))
-}
-
-// shellCommand 经 shell 执行命令，支持管道/重定向。
-func shellCommand(c string) *exec.Cmd {
-	if runtime.GOOS == "windows" {
-		return exec.Command("cmd", "/C", c)
-	}
-	return exec.Command("sh", "-c", c)
 }
 
 func tail(s string, n int) string {

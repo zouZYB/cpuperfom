@@ -81,6 +81,8 @@ func (s *Server) routes() {
 		r.Post("/runs/{id}/profiles", s.uploadProfile)
 		r.Get("/compare", s.compareRuns)
 		r.Get("/flamegraph/diff", s.flamegraphDiff)
+		r.Get("/ci/repos", s.listWatchRepos)
+		r.Get("/ci/jobs", s.listCIJobs)
 	})
 }
 
@@ -436,6 +438,28 @@ func (s *Server) flamegraphDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	tree.Prune(threshold)
 	writeJSON(w, http.StatusOK, tree)
+}
+
+// listWatchRepos 返回各受监控仓库的轮询游标与最近错误（benchd -ci 启用时有数据）。
+func (s *Server) listWatchRepos(w http.ResponseWriter, _ *http.Request) {
+	repos, err := s.q.ListWatchRepos()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"repos": repos})
+}
+
+// listCIJobs 返回 CI 对比任务历史（?repo=name&limit=N），含 before/after run_id 与结论。
+func (s *Server) listCIJobs(w http.ResponseWriter, r *http.Request) {
+	repo := r.URL.Query().Get("repo")
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	jobs, err := s.q.ListCIJobs(repo, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
 }
 
 func (s *Server) compareRuns(w http.ResponseWriter, r *http.Request) {

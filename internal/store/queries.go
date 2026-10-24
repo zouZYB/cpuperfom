@@ -288,6 +288,124 @@ func (q *Queries) CountersOfRun(runID int64) ([]BenchCounter, error) {
 	return out, rows.Err()
 }
 
+// ---------- CI 监控 ----------
+
+// UpsertWatchRepo 按 (path, branch) 登记受监控仓库，已存在则更新名称，返回 ID。
+// 游标（last_commit 等）在配置变更时保留。
+func (q *Queries) UpsertWatchRepo(name, path, branch string) (int64, error) {
+	_, err := q.db.Exec(`INSERT INTO watch_repos (name, path, branch) VALUES (?, ?, ?)
+		ON CONFLICT (path, branch) DO UPDATE SET name = excluded.name`, name, path, branch)
+	if err != nil {
+		return 0, fmt.Errorf("upsert watch repo: %w", err)
+	}
+	var id int64
+	err = q.db.QueryRow(`SELECT id FROM watch_repos WHERE path = ? AND branch = ?`, path, branch).Scan(&id)
+	return id, err
+}
+
+func (q *Queries) GetWatchRepo(id int64) (*model.WatchRepo, error) {
+	var w model.WatchRepo
+	err := q.db.QueryRow(`SELECT id, name, path, branch, last_commit, last_seen,
+		COALESCE(last_poll_at, ''), last_error, created_at FROM watch_repos WHERE id = ?`, id).
+		Scan(&w.ID, &w.Name, &w.Path, &w.Branch, &w.LastCommit, &w.LastSeen,
+			&w.LastPollAt, &w.LastError, &w.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &w, nil
+}
+
+func (q *Queries) ListWatchRepos() ([]model.WatchRepo, error) {
+	rows, err := q.db.Query(`SELECT id, name, path, branch, last_commit, last_seen,
+		COALESCE(last_poll_at, ''), last_error, created_at FROM watch_repos ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.WatchRepo
+	for rows.Next() {
+		var w model.WatchRepo
+		if err := rows.Scan(&w.ID, &w.Name, &w.Path, &w.Branch, &w.LastCommit, &w.LastSeen,
+			&w.LastPollAt, &w.LastError, &w.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+// RecordPoll 记录一次轮询结果（看到的 HEAD、时间、错误信息）。
+func (q *Queries) RecordPoll(id int64, seenSHA, errMsg string) error {
+	_, err := q.db.Exec(`UPDATE watch_repos SET last_seen = ?, last_error = ?,
+		last_poll_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`, seenSHA, errMsg, id)
+	return err
+}
+
+// AdvanceCursor 推进游标到已处理的 commit。
+func (q *Queries) AdvanceCursor(id int64, commit string) error {
+	_, err := q.db.Exec(`UPDATE watch_repos SET last_commit = ? WHERE id = ?`, commit, id)
+	return err
+}
+
+func (q *Queries) CreateCIJob(j *model.CIJob) (int64, error) {
+	res, err := q.db.Exec(`INSERT INTO ci_jobs (watch_repo_id, before_sha, after_sha) VALUES (?, ?, ?)`,
+		j.WatchRepoID, j.BeforeSHA, j.AfterSHA)
+	if err != nil {
+		return 0, fmt.Errorf("create ci job: %w", err)
+	}
+	return res.LastInsertId()
+}
+
+// FinishCIJob 结束一个任务，写入状态/结论/关联 run。runID 为 0 时写 NULL。
+func (q *Queries) FinishCIJob(id int64, status, verdict, errMsg string, beforeRunID, afterRunID int64) error {
+	var beforeID, afterID any
+	if beforeRunID != 0 {
+		beforeID = beforeRunID
+	}
+	if afterRunID != 0 {
+		afterID = afterRunID
+	}
+	_, err := q.db.Exec(`UPDATE ci_jobs SET status = ?, verdict = ?, error = ?,
+		before_run_id = ?, after_run_id = ?, finished_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+		WHERE id = ?`, status, verdict, errMsg, beforeID, afterID, id)
+	return err
+}
+
+// FailStaleCIJobs 启动清扫：把中断遗留的 running 任务标记为失败。
+func (q *Queries) FailStaleCIJobs() error {
+	_, err := q.db.Exec(`UPDATE ci_jobs SET status = 'failed', error = 'interrupted by benchd restart',
+		finished_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE status = 'running'`)
+	return err
+}
+
+// ListCIJobs 按仓库名列出任务历史（repo 为空列出全部），按开始时间倒序。
+func (q *Queries) ListCIJobs(repoName string, limit int) ([]model.CIJob, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := q.db.Query(`SELECT j.id, j.watch_repo_id, w.name, j.before_sha, j.after_sha,
+		j.status, COALESCE(j.before_run_id, 0), COALESCE(j.after_run_id, 0),
+		j.verdict, j.error, j.started_at, COALESCE(j.finished_at, '')
+		FROM ci_jobs j JOIN watch_repos w ON w.id = j.watch_repo_id
+		WHERE (? = '' OR w.name = ?)
+		ORDER BY j.started_at DESC, j.id DESC LIMIT ?`, repoName, repoName, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.CIJob
+	for rows.Next() {
+		var j model.CIJob
+		if err := rows.Scan(&j.ID, &j.WatchRepoID, &j.RepoName, &j.BeforeSHA, &j.AfterSHA,
+			&j.Status, &j.BeforeRunID, &j.AfterRunID, &j.Verdict, &j.Error,
+			&j.StartedAt, &j.FinishedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
 // CountersFor 取某次运行中某基准的全部计数器。
 func (q *Queries) CountersFor(runID, benchmarkID int64) (map[string]float64, error) {
 	rows, err := q.db.Query(`SELECT name, value FROM counters WHERE run_id = ? AND benchmark_id = ?`, runID, benchmarkID)

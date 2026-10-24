@@ -4,6 +4,10 @@ bin/
 *.db-shm
 examples/*/build/
 examples/*/*.json
+dscode/*/build/
+dscode/*/build-*/
+dscode/*/*.json
+!dscode/*/CMakePresets.json
 web/node_modules/
 web/dist/
 examples/worktree-demo/

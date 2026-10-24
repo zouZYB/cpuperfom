@@ -85,6 +85,35 @@ type Profile struct {
 	Data        []byte `json:"-"`
 }
 
+// WatchRepo 是一个受 CI 监控的 git 仓库及其轮询游标。
+type WatchRepo struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Branch     string `json:"branch"`
+	LastCommit string `json:"last_commit"` // 已处理到的 commit SHA，'' = 未初始化
+	LastSeen   string `json:"last_seen"`
+	LastPollAt string `json:"last_poll_at"`
+	LastError  string `json:"last_error"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// CIJob 是一次「新提交 → before/after 对比」任务的执行记录。
+type CIJob struct {
+	ID          int64  `json:"id"`
+	WatchRepoID int64  `json:"watch_repo_id"`
+	RepoName    string `json:"repo_name,omitempty"` // 仅 ListCIJobs 联表填充
+	BeforeSHA   string `json:"before_sha"`
+	AfterSHA    string `json:"after_sha"`
+	Status      string `json:"status"` // running | success | failed
+	BeforeRunID int64  `json:"before_run_id"`
+	AfterRunID  int64  `json:"after_run_id"`
+	Verdict     string `json:"verdict"`
+	Error       string `json:"error"`
+	StartedAt   string `json:"started_at"`
+	FinishedAt  string `json:"finished_at,omitempty"`
+}
+
 // CompareResult 是单个基准 before/after 对比的统计结论。
 type CompareResult struct {
 	Benchmark    string  `json:"benchmark"`
